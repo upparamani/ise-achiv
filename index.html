@@ -1,0 +1,59 @@
+var DEFAULT_DRIVE_FOLDER_ID = '1MkZGforPXGn_37MOyoMzsU8EteWxrcNHEYH';
+
+function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) || '';
+  if (action === 'list') {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+    var rows = sheet.getDataRange().getValues();
+    var headers = rows.shift() || [];
+    var data = rows.map(function (r) {
+      var obj = {};
+      headers.forEach(function (h, i) { obj[h] = r[i]; });
+      return obj;
+    });
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true, data: data }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, message: 'ISE GIT Achievements API is running' }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var data = JSON.parse(e.postData.contents);
+  var folderId = data.driveFolderId || DEFAULT_DRIVE_FOLDER_ID;
+  var driveUrl = data.driveUrl || '';
+
+  if (data.proofDataUrl && data.proofDataUrl.indexOf('base64,') > -1) {
+    var parts = data.proofDataUrl.split('base64,');
+    var mime = parts[0].split(':')[1].split(';')[0];
+    var ext = mime.indexOf('pdf') > -1 ? '.pdf' : (mime.indexOf('jpeg') > -1 || mime.indexOf('jpg') > -1 ? '.jpg' : '.png');
+    var bytes = Utilities.base64Decode(parts[1]);
+    var safeName = (data.name || 'Certificate').replace(/[^a-zA-Z0-9_-]/g, '_');
+    var blob = Utilities.newBlob(bytes, mime, safeName + '_' + Date.now() + ext);
+    var file = DriveApp.getFolderById(folderId).createFile(blob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    driveUrl = file.getUrl();
+  }
+
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheets()[0];
+  sheet.appendRow([
+    new Date(),
+    data.id || '',
+    data.category || '',
+    data.name || '',
+    data.date || '',
+    data.eventName || '',
+    data.scope || '',
+    data.eventType || '',
+    data.result || '',
+    data.status || '',
+    driveUrl
+  ]);
+
+  return ContentService
+    .createTextOutput(JSON.stringify({ ok: true, driveUrl: driveUrl }))
+    .setMimeType(ContentService.MimeType.JSON);
+}
