@@ -1306,30 +1306,55 @@
         const text = (rawText || '').replace(/\r/g, '\n');
         const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
         const lower = text.toLowerCase();
+        const signatoryRoleRe = /\b(principal|head of the department|hod|dean|coordinator|co-ordinator|convener|director|secretary|chairman|associate professor|associate pofessor|assistant professor|signatory)\b/i;
 
-        // 1. Name extraction
+        // 1. Name extraction (prioritize recipient phrases, ignore signatory blocks)
         let name = '';
-        const namePatterns = [
-          /(?:certify that|awarded to|presented to|conferred upon|this certificate is awarded to|proudly presented to)\s+([A-Z][A-Za-z.\s]{2,45})/i,
-          /(?:Mr\.|Ms\.|Mrs\.|Dr\.|Prof\.)\s+([A-Z][A-Za-z.\s]{2,40})/
-        ];
-        for (const pat of namePatterns) {
-          const m = text.match(pat);
-          if (m && m[1]) {
-            name = m[1].split(/\n|for |has |in |at |on |of /i)[0].trim();
-            if (name.length >= 3) break;
+        const recipientIdx = lines.findIndex(l => /(?:this is to certify that|certify that|awarded to|presented to|conferred upon|proudly presented to)/i.test(l));
+        if (recipientIdx !== -1) {
+          const sameLineAfter = lines[recipientIdx].replace(/.*?(?:this is to certify that|certify that|awarded to|presented to|conferred upon|proudly presented to)\s*/i, '').trim();
+          const candidate = sameLineAfter.length >= 3
+            ? sameLineAfter
+            : (lines[recipientIdx + 1] || '');
+          if (candidate && !signatoryRoleRe.test(candidate) && !/\b(certificate|institute|college|university|department)\b/i.test(candidate)) {
+            name = candidate.split(/\b(?:from|has|for|in|at|on|of)\b/i)[0].replace(/^(?:Mr\.?|Ms\.?|Mrs\.?|Dr\.?|Prof\.?)\s+/i, '').trim();
           }
         }
-        if (!name && lines.length > 1) {
-          const candidate = lines.find(l => /^[A-Z][a-z]+(\s+[A-Z][a-z]+){1,3}$/.test(l) && !/certificate|award|hackathon|conference|institute|university/i.test(l));
-          if (candidate) name = candidate;
+
+        if (!name) {
+          const namePatterns = [
+            /(?:certify that|awarded to|presented to|conferred upon|proudly presented to)[\s:]+([A-Z][A-Za-z.\s]{2,55})/i
+          ];
+          for (const pat of namePatterns) {
+            const m = text.match(pat);
+            if (m && m[1]) {
+              const cleaned = m[1].split(/\n|\b(?:from|for|has|in|at|on|of)\b/i)[0].trim();
+              if (cleaned.length >= 3 && !signatoryRoleRe.test(cleaned)) {
+                name = cleaned;
+                break;
+              }
+            }
+          }
         }
 
-        // 2. Date extraction -> YYYY-MM-DD
+        if (!name) {
+          for (let i = 0; i < lines.length; i++) {
+            const l = lines[i];
+            const nextL = lines[i + 1] || '';
+            if (signatoryRoleRe.test(l) || signatoryRoleRe.test(nextL)) continue;
+            if (/\b(certificate|award|hackathon|conference|institute|university|department|college|programme|program|technology)\b/i.test(l)) continue;
+            if (/^[A-Z][A-Z\s.]{4,45}$/.test(l) || /^[A-Z][a-z]+(?:\s+[A-Z][a-z.]+){1,3}$/.test(l)) {
+              name = l.replace(/^(?:Mr\.?|Ms\.?|Mrs\.?|Dr\.?|Prof\.?)\s+/i, '').trim();
+              break;
+            }
+          }
+        }
+
+        // 2. Date extraction -> YYYY-MM-DD (handles ordinals like 04th to 08th October 2021)
         let dateStr = '';
         const isoMatch = text.match(/\b(20\d{2})[-/](0?[1-9]|1[0-2])[-/](0?[1-9]|[12]\d|3[01])\b/);
         const dmyMatch = text.match(/\b(0?[1-9]|[12]\d|3[01])[-/](0?[1-9]|1[0-2])[-/](20\d{2})\b/);
-        const monthMatch = text.match(/\b(\d{1,2})?\s*(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[\s,]+(\d{1,2})?[\s,]*(20\d{2})\b/i);
+        const monthMatch = text.match(/\b(\d{1,2})(?:st|nd|rd|th)?(?:\s*(?:to|-)\s*\d{1,2}(?:st|nd|rd|th)?)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*[\s,]+(\d{1,2})?(?:st|nd|rd|th)?[\s,]*(20\d{2})\b/i);
 
         if (isoMatch) {
           dateStr = `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
@@ -1361,7 +1386,7 @@
         // 5. Result / Prize
         let result = 'Participated';
         const prizePatterns = [
-          /(first\s+place|1st\s+place|1st\s+prize|winner|champion|gold\s+medal|best\s+paper(?:\s+award)?|second\s+place|2nd\s+place|runner[\s-]*up|silver\s+medal|third\s+place|3rd\s+place|bronze\s+medal|finalist|distinction)/i
+          /(first\s+place|1st\s+place|1st\s+prize|winner|champion|gold\s+medal|best\s+paper(?:\s+award)?|second\s+place|2nd\s+place|runner[\s-]*up|silver\s+medal|third\s+place|3rd\s+place|bronze\s+medal|finalist|distinction|certificate\s+of\s+participation)/i
         ];
         for (const p of prizePatterns) {
           const m = text.match(p);
@@ -1372,10 +1397,16 @@
           }
         }
 
-        // 6. Event Name
+        // 6. Event Name (quoted title or "on / in <title>")
         let eventName = '';
-        const eventMatch = text.match(/(?:participating in|held at|organized by|during|at the|for the)\s+([^\n.,]{5,80})/i);
-        if (eventMatch && eventMatch[1]) {
+        const quotedTitle = text.match(/[“"']([^“"']{8,140})[”"']/);
+        const onTitleMatch = text.match(/(?:programme|program|fdp|workshop|conference|symposium)\s*(?:\(fdp\))?\s+on\s+[“"']?([^\n”"']{6,130})/i);
+        const eventMatch = text.match(/(?:participating in|held at|organized by|during|at the|for the)\s+([^\n.,]{5,90})/i);
+        if (quotedTitle && quotedTitle[1]) {
+          eventName = quotedTitle[1].replace(/\s+/g, ' ').trim();
+        } else if (onTitleMatch && onTitleMatch[1]) {
+          eventName = onTitleMatch[1].replace(/\s+/g, ' ').trim();
+        } else if (eventMatch && eventMatch[1]) {
           eventName = eventMatch[1].trim();
         } else {
           const evtLine = lines.find(l => /hackathon|conference|symposium|championship|summit|workshop|fdp|fest|olympiad/i.test(l));
