@@ -220,7 +220,7 @@
       <span>ISE GIT Achievements Portal • No registration required • Public additions moderated by Admin</span>
       <div class="flex items-center gap-3">
         <span>Client-Side Tesseract.js OCR &amp; AI</span>
-        <span class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold">v2.6 • Deployed 2026-11-20</span>
+        <span class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold">v2.7 • Deployed 2026-11-20</span>
       </div>
     </div>
   </footer>
@@ -561,13 +561,19 @@
             </button>
           </div>
         </details>
-        <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+        <p id="gasTestResult" class="hidden text-xs font-medium px-3 py-2 rounded-lg"></p>
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200">
           <button id="resetDemoDataBtn" type="button" class="text-xs font-semibold text-slate-500 hover:text-slate-800 underline cursor-pointer">
             Reset to Sample Data
           </button>
-          <button id="saveGasUrlBtn" type="button" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold cursor-pointer">
-            Save Drive &amp; Sync Settings
-          </button>
+          <div class="flex items-center gap-2">
+            <button id="testGasBtn" type="button" class="px-3 py-2 rounded-lg border border-sky-300 bg-sky-50 hover:bg-sky-100 text-sky-800 text-xs font-semibold cursor-pointer">
+              Test Connection
+            </button>
+            <button id="saveGasUrlBtn" type="button" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold cursor-pointer">
+              Save Drive &amp; Sync Settings
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2598,15 +2604,18 @@
             added++;
             if (state.gasUrl) {
               try {
-                await fetch(state.gasUrl, {
+                const resp = await fetch(state.gasUrl, {
                   method: 'POST',
-                  mode: 'no-cors',
                   headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                   body: JSON.stringify({
                     ...entry,
                     driveFolderId: (state.driveFolderUrl.match(/folders\/([a-zA-Z0-9_-]+)/) || [])[1] || DEFAULT_DRIVE_FOLDER_ID
                   })
                 });
+                if (resp.ok) {
+                  const resJson = await resp.json();
+                  if (resJson && resJson.driveUrl) entry.driveUrl = resJson.driveUrl;
+                }
               } catch (err) {}
             }
           }
@@ -2681,20 +2690,28 @@
           state.achievements.unshift(newEntry);
           saveAchievements();
 
-          // Optional Google Apps Script sync if configured
+          // Sync to Google Apps Script (Drive + Sheet)
           if (state.gasUrl) {
             try {
-              await fetch(state.gasUrl, {
+              const resp = await fetch(state.gasUrl, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify({
                   ...newEntry,
                   driveFolderId: (state.driveFolderUrl.match(/folders\/([a-zA-Z0-9_-]+)/) || [])[1] || DEFAULT_DRIVE_FOLDER_ID
                 })
               });
+              if (resp.ok) {
+                const resJson = await resp.json();
+                if (resJson && resJson.driveUrl) {
+                  newEntry.driveUrl = resJson.driveUrl;
+                  saveAchievements();
+                }
+              } else {
+                showToast('Saved locally, but Google Sheet sync returned HTTP ' + resp.status);
+              }
             } catch (err) {
-              // Non-blocking fallback
+              showToast('Saved locally. Check Apps Script deployment access ("Anyone") for Drive/Sheet sync.');
             }
           }
 
@@ -2903,6 +2920,28 @@
             showToast('Copied Code.gs to clipboard!');
           }
         });
+        document.getElementById('testGasBtn').addEventListener('click', async () => {
+          const url = document.getElementById('gasUrlInput').value.trim() || DEFAULT_GAS_URL;
+          const resEl = document.getElementById('gasTestResult');
+          resEl.className = 'text-xs font-medium px-3 py-2 rounded-lg bg-slate-100 text-slate-700';
+          resEl.textContent = 'Testing connection to Apps Script...';
+          resEl.classList.remove('hidden');
+          try {
+            const resp = await fetch(`${url}?action=list`);
+            const data = await resp.json();
+            if (data && data.ok) {
+              resEl.className = 'text-xs font-medium px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800';
+              resEl.textContent = `Connected! Sheet has ${Array.isArray(data.data) ? data.data.length : 0} synced row(s).`;
+            } else {
+              resEl.className = 'text-xs font-medium px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900';
+              resEl.textContent = 'Reached Apps Script, but response was unexpected. Ensure Code.gs is re-deployed as a New version.';
+            }
+          } catch (err) {
+            resEl.className = 'text-xs font-medium px-3 py-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-800';
+            resEl.textContent = 'Connection failed. In Apps Script, deploy Web App with "Execute as: Me" and "Who has access: Anyone".';
+          }
+        });
+
         document.getElementById('saveGasUrlBtn').addEventListener('click', () => {
           state.driveFolderUrl = document.getElementById('driveFolderUrlInput').value.trim();
           state.gasUrl = document.getElementById('gasUrlInput').value.trim();
