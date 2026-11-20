@@ -220,7 +220,7 @@
       <span>ISE GIT Achievements Portal • No registration required • Public additions moderated by Admin</span>
       <div class="flex items-center gap-3">
         <span>Client-Side Tesseract.js OCR &amp; AI</span>
-        <span class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold">v2.5 • Deployed 2026-11-20</span>
+        <span class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold">v2.6 • Deployed 2026-11-20</span>
       </div>
     </div>
   </footer>
@@ -667,6 +667,7 @@
       const DRIVE_FOLDER_KEY = 'git_achievements_drive_folder_v1';
       const DEFAULT_DRIVE_FOLDER_ID = '1MkZGPXGn_37MOyoMzsU8EteWxrcNHEYH';
       const DEFAULT_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1MkZGPXGn_37MOyoMzsU8EteWxrcNHEYH';
+      const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbzFBgy4xLeWYfKjzTgVicY6w05q43SD1kwmfjG-ADxU7WqhszZwOoFY-u1DtafjWE7bA/exec';
 
       const ADMIN_EMAILS = ['upparamani@git.edu', 'upparamani@gmail.com'];
       const ADMIN_PASS = 'admin123';
@@ -1223,7 +1224,7 @@
           if (savedAdmin && ADMIN_EMAILS.includes(savedAdmin.toLowerCase())) {
             state.adminEmail = savedAdmin;
           }
-          state.gasUrl = localStorage.getItem(GAS_URL_KEY) || '';
+          state.gasUrl = localStorage.getItem(GAS_URL_KEY) || DEFAULT_GAS_URL;
           let savedFolder = localStorage.getItem(DRIVE_FOLDER_KEY) || DEFAULT_DRIVE_FOLDER_URL;
           if (savedFolder.includes('1MkZGforPXGn_37MOyoMzsU8EteWxrcNHEYH')) {
             savedFolder = DEFAULT_DRIVE_FOLDER_URL;
@@ -1233,6 +1234,7 @@
         } catch (e) {
           state.achievements = [...SEED_ACHIEVEMENTS];
           state.driveFolderUrl = DEFAULT_DRIVE_FOLDER_URL;
+          state.gasUrl = DEFAULT_GAS_URL;
         }
       }
 
@@ -2431,10 +2433,67 @@
         document.getElementById('verifyModal').classList.add('hidden');
       }
 
+
+      async function syncFromGoogleSheet() {
+        const gasUrl = state.gasUrl || DEFAULT_GAS_URL;
+        if (!gasUrl) return;
+        try {
+          const resp = await fetch(`${gasUrl}?action=list`);
+          if (!resp.ok) return;
+          const json = await resp.json();
+          if (!json || !json.ok || !Array.isArray(json.data)) return;
+
+          let changed = false;
+          json.data.forEach(row => {
+            const id = String(row['ID'] || row.id || '').trim();
+            const name = String(row['Name'] || row.name || '').trim();
+            const eventName = String(row['Event Name'] || row.eventName || '').trim();
+            if (!name && !eventName) return;
+
+            const existing = id ? state.achievements.find(a => a.id === id) : null;
+            if (existing) {
+              if (!existing.driveUrl && (row['Drive URL'] || row.driveUrl)) {
+                existing.driveUrl = String(row['Drive URL'] || row.driveUrl).trim();
+                changed = true;
+              }
+              return;
+            }
+
+            const rawDate = row['Date'] || row.date || '';
+            const dateStr = rawDate ? String(rawDate).slice(0, 10) : '';
+            state.achievements.unshift({
+              id: id || ('sheet-' + Math.random().toString(36).slice(2, 9)),
+              category: String(row['Category'] || row.category || 'Student').trim(),
+              name,
+              date: dateStr,
+              eventName: eventName || 'Achievement',
+              scope: String(row['Level'] || row.scope || 'National').trim(),
+              eventType: String(row['Type'] || row.eventType || 'Others').trim(),
+              result: String(row['Result'] || row.result || 'Participated').trim(),
+              source: (row['Drive URL'] || row.driveUrl) ? 'OCR' : 'Manual',
+              status: String(row['Status'] || row.status || 'Pending').trim(),
+              duplicateFlag: false,
+              proofDataUrl: '',
+              driveUrl: String(row['Drive URL'] || row.driveUrl || '').trim(),
+              createdAt: row['Timestamp'] ? String(row['Timestamp']) : new Date().toISOString()
+            });
+            changed = true;
+          });
+
+          if (changed) {
+            saveAchievements();
+            renderAchievements();
+          }
+        } catch (err) {
+          // Non-blocking if offline or CORS restricted
+        }
+      }
+
       // Wire up events
       document.addEventListener('DOMContentLoaded', () => {
         loadState();
         renderAchievements();
+        syncFromGoogleSheet();
 
         // Category tabs
         document.querySelectorAll('.cat-tab').forEach(btn => {
@@ -2542,7 +2601,7 @@
                 await fetch(state.gasUrl, {
                   method: 'POST',
                   mode: 'no-cors',
-                  headers: { 'Content-Type': 'application/json' },
+                  headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                   body: JSON.stringify({
                     ...entry,
                     driveFolderId: (state.driveFolderUrl.match(/folders\/([a-zA-Z0-9_-]+)/) || [])[1] || DEFAULT_DRIVE_FOLDER_ID
@@ -2628,10 +2687,10 @@
               await fetch(state.gasUrl, {
                 method: 'POST',
                 mode: 'no-cors',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
                 body: JSON.stringify({
                   ...newEntry,
-                  driveFolderId: (state.driveFolderUrl.match(/folders\/([a-zA-Z0-9_-]+)/) || [])[1] || state.driveFolderUrl
+                  driveFolderId: (state.driveFolderUrl.match(/folders\/([a-zA-Z0-9_-]+)/) || [])[1] || DEFAULT_DRIVE_FOLDER_ID
                 })
               });
             } catch (err) {
