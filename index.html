@@ -71,7 +71,7 @@
         <span id="adminEmailDisplay" class="font-medium"></span>
         <span class="text-amber-700 hidden md:inline">• You can approve pending entries, edit details, and delete records.</span>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <button id="filterPendingBtn" type="button"
           class="px-2.5 py-1 rounded-md bg-white border border-amber-300 text-amber-900 hover:bg-amber-100 text-xs font-semibold cursor-pointer">
           Pending (<span id="pendingCountBadge">0</span>)
@@ -84,10 +84,10 @@
           class="px-2.5 py-1 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold cursor-pointer">
           Export CSV
         </button>
-        <button id="openDriveFolderBtn" type="button"
-          class="px-2.5 py-1 rounded-md bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50 text-xs font-semibold cursor-pointer">
-          Drive Proofs Folder
-        </button>
+        <a id="openDriveFolderBtn" href="https://drive.google.com/drive/folders/1MkZGPXGn_37MOyoMzsU8EteWxrcNHEYH" target="_blank" rel="noopener noreferrer"
+          class="px-2.5 py-1 rounded-md bg-white border border-indigo-300 text-indigo-700 hover:bg-indigo-50 text-xs font-semibold inline-flex items-center gap-1">
+          Drive Proofs Folder ↗
+        </a>
         <button id="openBackendBtn" type="button"
           class="px-2.5 py-1 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-semibold cursor-pointer">
           Drive &amp; Sheets Sync
@@ -97,6 +97,15 @@
           Logout
         </button>
       </div>
+    </div>
+    <!-- Hardwired Admin Project & Infrastructure Links -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-2.5 pt-1 border-t border-amber-200/70 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+      <span class="font-bold text-amber-900 uppercase tracking-wider text-[11px]">Admin Links:</span>
+      <a href="https://docs.google.com/spreadsheets/d/1EspebhxLRqkCJVe7RWDl2HTH0R-_-E1kzK-xbajtBKU/edit?gid=0#gid=0" target="_blank" rel="noopener noreferrer" class="font-medium text-indigo-700 hover:underline">📊 Achievements DB Sheet ↗</a>
+      <a href="https://script.google.com/u/0/home/projects/1uHkKYwIUZy7UgwVYT5bzGoKKhyRzApBQXgDF3-gmphComIIVF4mUQXQb/edit" target="_blank" rel="noopener noreferrer" class="font-medium text-indigo-700 hover:underline">⚙️ Apps Script Editor ↗</a>
+      <a href="https://script.google.com/home/" target="_blank" rel="noopener noreferrer" class="font-medium text-indigo-700 hover:underline">🧩 Apps Script Home ↗</a>
+      <a href="https://sites.google.com/d/1MOsyJNojYuE0UbwdZsICXwv8WO-xMb-v/p/1Gg1yJ7jFiKGBh1jMs73z16R20GIVKiJx/edit" target="_blank" rel="noopener noreferrer" class="font-medium text-indigo-700 hover:underline">🌐 Google Site Editor ↗</a>
+      <a href="https://upparamani.github.io/ise-achiv/" target="_blank" rel="noopener noreferrer" class="font-medium text-indigo-700 hover:underline">🚀 GitHub Pages Live ↗</a>
     </div>
   </div>
 
@@ -208,8 +217,11 @@
   <!-- Footer -->
   <footer class="bg-white border-t border-slate-200 py-4 mt-8">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-      <span>Open Achievements Portal • No registration required • Public additions moderated by Admin</span>
-      <span>Powered by Client-Side Tesseract.js OCR &amp; Smart Field Extraction</span>
+      <span>ISE GIT Achievements Portal • No registration required • Public additions moderated by Admin</span>
+      <div class="flex items-center gap-3">
+        <span>Client-Side Tesseract.js OCR &amp; AI</span>
+        <span class="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 font-semibold">v2.5 • Deployed 2026-11-20</span>
+      </div>
     </div>
   </footer>
 
@@ -1212,7 +1224,12 @@
             state.adminEmail = savedAdmin;
           }
           state.gasUrl = localStorage.getItem(GAS_URL_KEY) || '';
-          state.driveFolderUrl = localStorage.getItem(DRIVE_FOLDER_KEY) || DEFAULT_DRIVE_FOLDER_URL;
+          let savedFolder = localStorage.getItem(DRIVE_FOLDER_KEY) || DEFAULT_DRIVE_FOLDER_URL;
+          if (savedFolder.includes('1MkZGforPXGn_37MOyoMzsU8EteWxrcNHEYH')) {
+            savedFolder = DEFAULT_DRIVE_FOLDER_URL;
+            localStorage.setItem(DRIVE_FOLDER_KEY, savedFolder);
+          }
+          state.driveFolderUrl = savedFolder;
         } catch (e) {
           state.achievements = [...SEED_ACHIEVEMENTS];
           state.driveFolderUrl = DEFAULT_DRIVE_FOLDER_URL;
@@ -1421,6 +1438,32 @@
         return { name, dateStr, eventName, scope, eventType, result, category };
       }
 
+      function prepareImageForMobileOcr(dataUrl) {
+        return new Promise(resolve => {
+          const img = new Image();
+          img.onload = () => {
+            const maxDim = 1600;
+            let w = img.naturalWidth || img.width;
+            let h = img.naturalHeight || img.height;
+            if (w > maxDim || h > maxDim) {
+              const ratio = Math.min(maxDim / w, maxDim / h);
+              w = Math.round(w * ratio);
+              h = Math.round(h * ratio);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', 0.88));
+          };
+          img.onerror = () => resolve(dataUrl);
+          img.src = dataUrl;
+        });
+      }
+
       async function runOcrOnImage(dataUrl) {
         const statusBox = document.getElementById('ocrStatusBox');
         const statusText = document.getElementById('ocrStatusText');
@@ -1431,8 +1474,9 @@
         const rawOcrEl = document.getElementById('rawOcrText');
         const summaryEl = document.getElementById('ocrExtractedSummary');
 
-        state.pendingProofDataUrl = dataUrl;
-        previewImg.src = dataUrl;
+        const optimizedDataUrl = await prepareImageForMobileOcr(dataUrl);
+        state.pendingProofDataUrl = optimizedDataUrl;
+        previewImg.src = optimizedDataUrl;
         previewWrap.classList.remove('hidden');
         statusBox.classList.remove('hidden');
         statusText.textContent = 'Scanning certificate with Tesseract OCR...';
@@ -1443,7 +1487,7 @@
           if (typeof Tesseract === 'undefined') {
             throw new Error('OCR library unavailable offline');
           }
-          const workerResult = await Tesseract.recognize(dataUrl, 'eng', {
+          const workerResult = await Tesseract.recognize(optimizedDataUrl, 'eng', {
             logger: m => {
               if (m.status === 'recognizing text' && typeof m.progress === 'number') {
                 const pct = Math.max(15, Math.round(m.progress * 100));
@@ -1460,13 +1504,16 @@
           const parsed = parseCertificateText(rawText);
           state.pendingOcrText = rawText.trim();
           state.pendingAiParsed = parsed;
-          if (parsed.category) document.getElementById('fieldCategory').value = parsed.category;
-          if (parsed.name) document.getElementById('fieldName').value = parsed.name;
-          if (parsed.dateStr) document.getElementById('fieldDate').value = parsed.dateStr;
-          if (parsed.eventName) document.getElementById('fieldEventName').value = parsed.eventName;
+          const currentCat = document.getElementById('fieldCategory').value;
+          if (currentCat !== 'Staff' && parsed.category) {
+            document.getElementById('fieldCategory').value = parsed.category;
+          }
+          document.getElementById('fieldName').value = parsed.name || document.getElementById('fieldName').value || 'Name from Certificate (Review)';
+          document.getElementById('fieldDate').value = parsed.dateStr || document.getElementById('fieldDate').value || new Date().toISOString().slice(0, 10);
+          document.getElementById('fieldEventName').value = parsed.eventName || document.getElementById('fieldEventName').value || 'Certificate Event (Review)';
           if (parsed.scope) document.getElementById('fieldScope').value = parsed.scope;
           if (parsed.eventType) document.getElementById('fieldEventType').value = parsed.eventType;
-          if (parsed.result) document.getElementById('fieldResult').value = parsed.result;
+          document.getElementById('fieldResult').value = parsed.result || document.getElementById('fieldResult').value || 'Participated';
 
           progressPct.textContent = '100%';
           progressBar.style.width = '100%';
@@ -1718,6 +1765,13 @@
           if (docxBtn) docxBtn.classList.remove('hidden');
           authLabel.textContent = 'Admin Active';
           emailDisplay.textContent = state.adminEmail;
+          const driveLink = document.getElementById('openDriveFolderBtn');
+          if (driveLink) {
+            const targetUrl = (state.driveFolderUrl && state.driveFolderUrl.startsWith('http'))
+              ? state.driveFolderUrl
+              : `https://drive.google.com/drive/folders/${state.driveFolderUrl || DEFAULT_DRIVE_FOLDER_ID}`;
+            driveLink.href = targetUrl;
+          }
         } else {
           adminBar.classList.add('hidden');
           if (pdfBtn) pdfBtn.classList.add('hidden');
@@ -2429,16 +2483,21 @@
 
         // File upload & mobile camera snap for OCR (Image or PDF)
         function handleOcrFileSelect(e) {
-          const file = e.target.files && e.target.files[0];
+          const input = e.target;
+          const file = input.files && input.files[0];
           if (!file) return;
           if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
             processPdfUpload(file);
+            input.value = '';
             return;
           }
           state.multiCerts = [];
           renderMultiCertQueue();
           const reader = new FileReader();
-          reader.onload = ev => runOcrOnImage(ev.target.result);
+          reader.onload = ev => {
+            runOcrOnImage(ev.target.result);
+            input.value = '';
+          };
           reader.readAsDataURL(file);
         }
         document.getElementById('fieldCategory').addEventListener('change', enforceRoleEntryMode);
@@ -2754,19 +2813,7 @@
         });
 
         // Backend Sync & Drive Folder Modal
-        document.getElementById('openDriveFolderBtn').addEventListener('click', () => {
-          if (state.driveFolderUrl) {
-            const url = state.driveFolderUrl.startsWith('http')
-              ? state.driveFolderUrl
-              : `https://drive.google.com/drive/folders/${state.driveFolderUrl}`;
-            window.open(url, '_blank', 'noopener,noreferrer');
-          } else {
-            document.getElementById('driveFolderUrlInput').value = '';
-            document.getElementById('gasUrlInput').value = state.gasUrl || '';
-            document.getElementById('backendModal').classList.remove('hidden');
-            showToast('Paste your Google Drive Proofs Folder URL or ID.');
-          }
-        });
+
         document.getElementById('openBackendBtn').addEventListener('click', () => {
           document.getElementById('driveFolderUrlInput').value = state.driveFolderUrl || '';
           document.getElementById('gasUrlInput').value = state.gasUrl || '';
